@@ -1,0 +1,122 @@
+-- ==========================================
+-- BLACK & LIME PRINTER
+-- ==========================================
+
+-- 1. CONFIGURATION
+local defaultLogID = "3C85" 
+local defaultWidth = 10 
+
+-- Map input characters to Turtle Slots
+-- Input "0" -> Slot 1 (Black)
+-- Input "1" -> Slot 2 (Lime)
+-- CHANGE these keys if your log data uses different characters
+local slotMap = {
+    ["0"] = 1, -- Black Block
+    ["1"] = 2, -- Lime Block
+}
+
+-- 2. SETUP & ARGS
+local args = { ... }
+local logID = args[1] or defaultLogID
+local imgWidth = tonumber(args[2]) or defaultWidth
+local url = "https://cedar.fogcloud.org/api/logs/" .. logID
+
+print("Target Log: " .. logID)
+print("Width: " .. imgWidth)
+print("Downloading...")
+
+-- 3. DOWNLOAD DATA
+local response = http.get(url)
+if not response then
+    print("Error: Bad URL.")
+    return
+end
+
+local rawData = response.readAll()
+response.close()
+print("Data size: " .. #rawData)
+
+-- 4. MOVEMENT FUNCTIONS
+local currentDistance = 0
+
+-- Moves the turtle to the start of the NEXT row
+local function returnAndShift()
+    -- 1. Turn around (face start of line)
+    turtle.turnRight()
+    turtle.turnRight()
+
+    -- 2. Return to X=0
+    for i = 1, currentDistance do
+        turtle.forward()
+    end
+
+    -- 3. Move to next row (Turn Right -> Move -> Turn Right)
+    -- This prints 'Top-Down' if you start Top-Left relative to the art
+    turtle.turnRight() 
+    turtle.forward()
+    turtle.turnRight()
+
+    currentDistance = 0
+end
+
+local function placeBlock(val)
+    local slot = slotMap[val]
+    
+    if slot then
+        turtle.select(slot)
+        
+        -- Optional: Dig if something is blocking the print path
+        if turtle.detectDown() then turtle.digDown() end
+
+        -- Place block below (hovering mode)
+        if turtle.placeDown() then
+            return true
+        else
+            print("Error: Slot " .. slot .. " empty?")
+            return false
+        end
+    end
+    return true -- Return true if we just skipped a blank space
+end
+
+-- 5. MAIN LOOP
+print("Starting... (Ensure Fuel > 0)")
+os.sleep(1)
+
+local blocksInRow = 0
+
+for i = 1, #rawData do
+    local char = string.sub(rawData, i, i)
+
+    -- Handle explicit newlines in data 'x'
+    if char == "x" then
+        returnAndShift()
+        blocksInRow = 0
+    elseif slotMap[char] then
+        -- Place the pixel
+        placeBlock(char)
+        blocksInRow = blocksInRow + 1
+
+        -- Move to next pixel or new row
+        if blocksInRow >= imgWidth then
+            returnAndShift()
+            blocksInRow = 0
+        else
+            if turtle.forward() then
+                currentDistance = currentDistance + 1
+            else
+                print("Blocked!")
+                break
+            end
+        end
+    end
+end
+
+-- Return to origin (Optional)
+turtle.turnRight()
+turtle.turnRight()
+for i = 1, currentDistance do
+    turtle.forward()
+end
+
+print("Done.")
